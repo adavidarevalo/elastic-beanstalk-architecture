@@ -102,40 +102,7 @@ Resources:
         - Key: Name
           Value: !Sub ${AWS::StackName}-db-sg
 
-  # RDS MySQL Instance
-  MySQLDatabase:
-    Type: AWS::RDS::DBInstance
-    Properties:
-      DBInstanceIdentifier: !Sub ${AWS::StackName}-mysql-db
-      DBInstanceClass: db.t3.micro
-      Engine: mysql
-      EngineVersion: '8.0.35'
-      MasterUsername: admin
-      MasterUserPassword: !Sub '{{resolve:secretsmanager:${DatabaseSecret}:SecretString:password}}'
-      AllocatedStorage: 20
-      StorageType: gp2
-      StorageEncrypted: true
-      MultiAZ: true
-      DBSubnetGroupName: !Ref DatabaseSubnetGroup
-      VPCSecurityGroups:
-        - !Ref DatabaseSecurityGroup
-      BackupRetentionPeriod: 7
-      DeletionProtection: false
-      Tags:
-        - Key: Name
-          Value: !Sub ${AWS::StackName}-mysql-db
 
-  # Secrets Manager for DB credentials
-  DatabaseSecret:
-    Type: AWS::SecretsManager::Secret
-    Properties:
-      Name: !Sub ${AWS::StackName}-db-credentials
-      Description: RDS MySQL database credentials
-      GenerateSecretString:
-        SecretStringTemplate: '{"username": "admin"}'
-        GenerateStringKey: 'password'
-        PasswordLength: 16
-        ExcludeCharacters: '"@/\'
 
   # IAM Role for Elastic Beanstalk EC2 instances
   ElasticBeanstalkEC2Role:
@@ -153,16 +120,7 @@ Resources:
         - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
         - arn:aws:iam::aws:policy/AWSElasticBeanstalkMulticontainerDocker
         - arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier
-      Policies:
-        - PolicyName: SecretsManagerAccess
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - secretsmanager:GetSecretValue
-                  - secretsmanager:DescribeSecret
-                Resource: !Ref DatabaseSecret
+
 
   # Instance Profile for EC2 instances
   ElasticBeanstalkInstanceProfile:
@@ -184,8 +142,8 @@ Resources:
     Type: AWS::ElasticBeanstalk::Environment
     Properties:
       ApplicationName: !Ref ElasticBeanstalkApplication
-      EnvironmentName: !Sub ${AWS::StackName}-tomcat-env
-      SolutionStackName: 64bit Amazon Linux 2 v4.3.0 running Tomcat 8.5 Corretto 11
+      EnvironmentName: dev-env
+      SolutionStackName: 64bit Amazon Linux 2 v4.9.3 running Tomcat 9 Corretto 11
       OptionSettings:
         # VPC Configuration
         - Namespace: aws:ec2:vpc
@@ -193,13 +151,13 @@ Resources:
           Value: !Ref VpcId
         - Namespace: aws:ec2:vpc
           OptionName: Subnets
-          Value: !Sub ${PrivateSubnet1Id},${PrivateSubnet2Id}
+          Value: !Ref PrivateSubnet1Id
         - Namespace: aws:ec2:vpc
           OptionName: ELBSubnets
-          Value: !Sub ${PublicSubnet1Id},${PublicSubnet2Id}
+          Value: !Ref PublicSubnet1Id
         - Namespace: aws:ec2:vpc
           OptionName: ELBScheme
-          Value: internal
+          Value: internet-facing
         # Load Balancer Configuration
         - Namespace: aws:elasticbeanstalk:environment
           OptionName: LoadBalancerType
@@ -211,9 +169,7 @@ Resources:
         - Namespace: aws:autoscaling:launchconfiguration
           OptionName: InstanceType
           Value: t2.micro
-        - Namespace: aws:autoscaling:launchconfiguration
-          OptionName: EC2KeyName
-          Value: ecommerce-key-pair
+
         - Namespace: aws:autoscaling:launchconfiguration
           OptionName: SecurityGroups
           Value: !Ref WebServerSecurityGroup
@@ -231,17 +187,6 @@ Resources:
           OptionName: SystemType
           Value: enhanced
 
-  # VPC Link for API Gateway
-  VPCLink:
-    Type: AWS::ApiGatewayV2::VpcLink
-    Properties:
-      Name: !Sub ${AWS::StackName}-vpc-link
-      SubnetIds:
-        - !Ref PrivateSubnet1Id
-        - !Ref PrivateSubnet2Id
-      SecurityGroupIds:
-        - !Ref ALBSecurityGroup
-
   # API Gateway
   ApiGateway:
     Type: AWS::ApiGatewayV2::Api
@@ -256,10 +201,8 @@ Resources:
     Properties:
       ApiId: !Ref ApiGateway
       IntegrationType: HTTP_PROXY
-      ConnectionType: VPC_LINK
-      ConnectionId: !Ref VPCLink
       IntegrationMethod: ANY
-      IntegrationUri: !Sub http://${ElasticBeanstalkEnvironment.EndpointURL}
+      IntegrationUri: !Sub http://${ElasticBeanstalkEnvironment}.${AWS::Region}.elasticbeanstalk.com
       PayloadFormatVersion: '1.0'
 
   # API Gateway Route
@@ -278,22 +221,40 @@ Resources:
       StageName: prod
       AutoDeploy: true
 
-Outputs:
-  DatabaseEndpoint:
-    Description: RDS MySQL database endpoint
-    Value: !GetAtt MySQLDatabase.Endpoint.Address
-    Export:
-      Name: !Sub ${AWS::StackName}-DatabaseEndpoint
-  
-  DatabasePort:
-    Description: RDS MySQL database port
-    Value: !GetAtt MySQLDatabase.Endpoint.Port
-    Export:
-      Name: !Sub ${AWS::StackName}-DatabasePort
+  # API Gateway Custom Domain
+  ApiCustomDomain:
+    Type: AWS::ApiGatewayV2::DomainName
+    Properties:
+      DomainName: api.davidarevalo.info
+      DomainNameConfigurations:
+        - CertificateArn: arn:aws:acm:us-east-1:779846783544:certificate/4a18358f-19fa-43fd-ab8f-c39e5a4da178
+          EndpointType: REGIONAL
+          SecurityPolicy: TLS_1_2
 
+  # API Gateway Domain Mapping
+  ApiDomainMapping:
+    Type: AWS::ApiGatewayV2::ApiMapping
+    Properties:
+      ApiId: !Ref ApiGateway
+      DomainName: !Ref ApiCustomDomain
+      Stage: !Ref ApiStage
+
+  # Route 53 Record for API subdomain
+  ApiDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z0663610FALSUBU5IALA
+      Name: api.davidarevalo.info
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApiCustomDomain.RegionalDomainName
+        HostedZoneId: !GetAtt ApiCustomDomain.RegionalHostedZoneId
+        EvaluateTargetHealth: false
+
+Outputs:
   ElasticBeanstalkURL:
     Description: Elastic Beanstalk application URL
-    Value: !GetAtt ElasticBeanstalkEnvironment.EndpointURL
+    Value: !Sub http://${ElasticBeanstalkEnvironment}.${AWS::Region}.elasticbeanstalk.com
     Export:
       Name: !Sub ${AWS::StackName}-AppURL
 
@@ -302,3 +263,9 @@ Outputs:
     Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/prod
     Export:
       Name: !Sub ${AWS::StackName}-ApiURL
+
+  CustomDomainURL:
+    Description: Custom domain URL for API
+    Value: https://api.davidarevalo.info
+    Export:
+      Name: !Sub ${AWS::StackName}-CustomDomainURL

@@ -11,9 +11,16 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: Whether to deploy the backend stack
+  
+  DeployFrontend:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Whether to deploy the frontend stack
 
 Conditions:
   ShouldDeployBackend: !Equals [!Ref DeployBackend, 'true']
+  ShouldDeployFrontend: !Equals [!Ref DeployFrontend, 'true']
 
 Resources:
   # VPC Stack
@@ -28,7 +35,7 @@ Resources:
     Condition: ShouldDeployBackend
     DependsOn: VPCStack
     Properties:
-      TemplateURL: backend-template.yaml
+      TemplateURL: backend-template.yml
       Parameters:
         VpcId: !GetAtt VPCStack.Outputs.VpcId
         PublicSubnet1Id: !GetAtt VPCStack.Outputs.PublicSubnet1Id
@@ -37,6 +44,13 @@ Resources:
         PrivateSubnet2Id: !GetAtt VPCStack.Outputs.PrivateSubnet2Id
         DatabaseSubnet1Id: !GetAtt VPCStack.Outputs.DatabaseSubnet1Id
         DatabaseSubnet2Id: !GetAtt VPCStack.Outputs.DatabaseSubnet2Id
+
+  # Frontend Stack (conditional)
+  FrontendStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployFrontend
+    Properties:
+      TemplateURL: frontend-template.yml
 
 Outputs:
   VPCStackId:
@@ -52,3 +66,13 @@ Outputs:
     Condition: ShouldDeployBackend
     Description: Elastic Beanstalk Application URL
     Value: !GetAtt BackendStack.Outputs.ElasticBeanstalkURL
+  
+  FrontendStackId:
+    Condition: ShouldDeployFrontend
+    Description: Frontend Stack ID
+    Value: !Ref FrontendStack
+  
+  FrontendURL:
+    Condition: ShouldDeployFrontend
+    Description: Frontend URL
+    Value: !GetAtt FrontendStack.Outputs.FrontendURL
