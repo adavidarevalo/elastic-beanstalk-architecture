@@ -18,6 +18,7 @@ resolve_s3 = true
 resolve_image_repos = true
 s3_prefix = "elastic-beanstalk-example"
 region = "us-east-1"
+parameter_overrides = "DeployBackend=\"false\" DeployFrontend=\"false\""
 
 [default.package.parameters]
 resolve_s3 = true

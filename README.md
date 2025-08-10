@@ -101,6 +101,28 @@ hello-world$ npm install
 hello-world$ npm run test
 ```
 
+## Disaster Recovery and DNS Failover
+
+The application includes disaster recovery deployment in us-west-1 with Route 53 DNS failover:
+
+### Deploy DR Stack
+```bash
+# Deploy to us-west-1
+sam build --template template-dr.yaml
+sam deploy --template-file .aws-sam/build/template.yaml --stack-name elastic-beanstalk-example-dr --region us-west-1 --parameter-overrides DeployFrontend=true DeployBackend=true --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM --resolve-s3 --no-confirm-changeset
+```
+
+### Configure DNS Failover
+```bash
+# Get secondary endpoints from DR stack outputs
+./deploy-failover.sh <secondary-api-endpoint> <secondary-frontend-endpoint>
+```
+
+The failover configuration includes:
+- Health checks for primary endpoints (us-east-1)
+- Automatic failover to secondary endpoints (us-west-1)
+- 30-second health check intervals with 3 failure threshold
+
 ## Cleanup
 
 To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
