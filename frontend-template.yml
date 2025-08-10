@@ -11,6 +11,7 @@ Resources:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: frontend.davidarevalo.info
+
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true
@@ -60,12 +61,8 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # Managed-CachingOptimized
         PriceClass: PriceClass_100
-        Aliases:
-          - frontend.davidarevalo.info
         ViewerCertificate:
-          AcmCertificateArn: arn:aws:acm:us-east-1:779846783544:certificate/4a18358f-19fa-43fd-ab8f-c39e5a4da178
-          SslSupportMethod: sni-only
-          MinimumProtocolVersion: TLSv1.2_2021
+          CloudFrontDefaultCertificate: true
         CustomErrorResponses:
           - ErrorCode: 404
             ResponseCode: 200
@@ -74,22 +71,7 @@ Resources:
             ResponseCode: 200
             ResponsePagePath: /index.html
 
-  # S3 Bucket Policy for CloudFront OAC
-  BucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref FrontendBucket
-      PolicyDocument:
-        Statement:
-          - Sid: AllowCloudFrontServicePrincipal
-            Effect: Allow
-            Principal:
-              Service: cloudfront.amazonaws.com
-            Action: s3:GetObject
-            Resource: !Sub ${FrontendBucket}/*
-            Condition:
-              StringEquals:
-                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}
+
 
   # Route 53 Record for frontend subdomain
   FrontendDNSRecord:
@@ -124,6 +106,6 @@ Outputs:
 
   FrontendURL:
     Description: Frontend URL
-    Value: https://frontend.davidarevalo.info
+    Value: !Sub https://${CloudFrontDistribution.DomainName}
     Export:
       Name: !Sub ${AWS::StackName}-FrontendURL
