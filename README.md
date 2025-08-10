@@ -1,105 +1,89 @@
-# elastic-beanstalk-example
+# Elastic Beanstalk Example - Full Stack Web Application
 
-This project contains source code and supporting files for a serverless application that you can deploy with the SAM CLI. It includes the following files and folders.
+This project contains a complete full-stack web application infrastructure deployed using AWS SAM (Serverless Application Model) with nested CloudFormation stacks.
 
-- hello-world - Code for the application's Lambda function and Project Dockerfile.
-- events - Invocation events that you can use to invoke the function.
-- hello-world/tests - Unit tests for the application code.
-- template.yaml - A template that defines the application's AWS resources.
+## Architecture Overview
 
-The application uses several AWS resources, including Lambda functions and an API Gateway API. These resources are defined in the `template.yaml` file in this project. You can update the template to add AWS resources through the same deployment process that updates your application code.
+The application consists of three main components deployed as nested stacks:
 
-## Deploy the sample application
+### 1. VPC Stack (`vpc-stack.yml`)
+- **VPC**: 10.0.0.0/16 CIDR with DNS support
+- **Public Subnets**: 2 subnets across AZs for load balancers
+- **Private Subnets**: 2 subnets across AZs for application servers
+- **Database Subnets**: 2 isolated subnets for RDS
+- **NAT Gateways**: High availability internet access for private subnets
+- **Route Tables**: Proper routing for public, private, and database tiers
 
-The Serverless Application Model Command Line Interface (SAM CLI) is an extension of the AWS CLI that adds functionality for building and testing Lambda applications. It uses Docker to run your functions in an Amazon Linux environment that matches Lambda. It can also emulate your application's build environment and API.
+### 2. Backend Stack (`backend-template.yml`)
+- **Elastic Beanstalk**: Tomcat 9 application environment
+- **API Gateway**: HTTP API with custom domain (api.davidarevalo.info)
+- **Security Groups**: Layered security for ALB, web servers, and database
+- **IAM Roles**: Least privilege access for EC2 instances
+- **RDS Subnet Group**: Multi-AZ database deployment ready
+- **Custom Domain**: SSL certificate integration with Route 53
 
-To use the SAM CLI, you need the following tools.
+### 3. Frontend Stack (`frontend-template.yml`)
+- **S3 Bucket**: Static website hosting (frontend.davidarevalo.info)
+- **CloudFront**: Global CDN with custom domain and SSL
+- **Origin Access Control**: Secure S3 access via CloudFront
+- **Route 53**: DNS management for custom domain
+- **Security**: Encrypted storage and secure content delivery
 
-* Docker - [Install Docker community edition](https://hub.docker.com/search/?type=edition&offering=community)
-* SAM CLI - [Install the SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-install.html)
+## Project Structure
 
-You may need the following for local testing.
+```
+elastic-beanstalk-example/
+├── template.yaml              # Main SAM template with nested stacks
+├── vpc-stack.yml             # VPC and networking infrastructure
+├── backend-template.yml      # Elastic Beanstalk and API Gateway
+├── frontend-template.yml     # S3, CloudFront, and static hosting
+├── samconfig.toml           # SAM CLI configuration
+├── bucket-policy.json       # S3 bucket policy for CloudFront
+└── .amazonq/rules/          # Amazon Q development guidelines
+```
 
-* Node.js - [Install Node.js 22](https://nodejs.org/en/), including the NPM package management tool.
+## Prerequisites
 
-To build and deploy your application for the first time, run the following in your shell:
+- AWS CLI configured with appropriate permissions
+- SAM CLI installed
+- Docker (for local testing)
+- Valid SSL certificate in ACM (us-east-1)
+- Route 53 hosted zone configured
+
+## Deployment
+
+### Deploy Complete Infrastructure
 
 ```bash
+# Build and deploy all stacks
 sam build
-sam deploy --guided
+sam deploy --parameter-overrides DeployFrontend=true DeployBackend=true --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM
 ```
 
-The first command will build a docker image from a Dockerfile and then the source of your application inside the Docker image. The second command will package and deploy your application to AWS, with a series of prompts:
-
-* **Stack Name**: The name of the stack to deploy to CloudFormation. This should be unique to your account and region, and a good starting point would be something matching your project name.
-* **AWS Region**: The AWS region you want to deploy your app to.
-* **Confirm changes before deploy**: If set to yes, any change sets will be shown to you before execution for manual review. If set to no, the AWS SAM CLI will automatically deploy application changes.
-* **Allow SAM CLI IAM role creation**: Many AWS SAM templates, including this example, create AWS IAM roles required for the AWS Lambda function(s) included to access AWS services. By default, these are scoped down to minimum required permissions. To deploy an AWS CloudFormation stack which creates or modifies IAM roles, the `CAPABILITY_IAM` value for `capabilities` must be provided. If permission isn't provided through this prompt, to deploy this example you must explicitly pass `--capabilities CAPABILITY_IAM` to the `sam deploy` command.
-* **Save arguments to samconfig.toml**: If set to yes, your choices will be saved to a configuration file inside the project, so that in the future you can just re-run `sam deploy` without parameters to deploy changes to your application.
-
-You can find your API Gateway Endpoint URL in the output values displayed after deployment.
-
-## Use the SAM CLI to build and test locally
-
-Build your application with the `sam build` command.
+### Deploy Individual Components
 
 ```bash
-elastic-beanstalk-example$ sam build
+# Deploy only VPC and Backend
+sam deploy --parameter-overrides DeployBackend=true --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM
+
+# Deploy only VPC and Frontend
+sam deploy --parameter-overrides DeployFrontend=true --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND CAPABILITY_NAMED_IAM
 ```
 
-The SAM CLI builds a docker image from a Dockerfile and then installs dependencies defined in `hello-world/package.json` inside the docker image. The processed template file is saved in the `.aws-sam/build` folder.
-* **Note**: The Dockerfile included in this sample application uses `npm install` by default. If you are building your code for production, you can modify it to use `npm ci` instead.
+## Configuration
 
-Test a single function by invoking it directly with a test event. An event is a JSON document that represents the input that the function receives from the event source. Test events are included in the `events` folder in this project.
+### Custom Domains
+- **API**: api.davidarevalo.info
+- **Frontend**: frontend.davidarevalo.info
+- **SSL Certificate**: ACM certificate required in us-east-1
+- **Route 53**: Hosted zone Z0663610FALSUBU5IALA
 
-Run functions locally and invoke them with the `sam local invoke` command.
-
-```bash
-elastic-beanstalk-example$ sam local invoke HelloWorldFunction --event events/event.json
-```
-
-The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
-
-```bash
-elastic-beanstalk-example$ sam local start-api
-elastic-beanstalk-example$ curl http://localhost:3000/
-```
-
-The SAM CLI reads the application template to determine the API's routes and the functions that they invoke. The `Events` property on each function's definition includes the route and method for each path.
-
-```yaml
-      Events:
-        HelloWorld:
-          Type: Api
-          Properties:
-            Path: /hello
-            Method: get
-```
-
-## Add a resource to your application
-The application template uses AWS Serverless Application Model (AWS SAM) to define application resources. AWS SAM is an extension of AWS CloudFormation with a simpler syntax for configuring common serverless application resources such as functions, triggers, and APIs. For resources not included in [the SAM specification](https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md), you can use standard [AWS CloudFormation](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-template-resource-type-ref.html) resource types.
-
-## Fetch, tail, and filter Lambda function logs
-
-To simplify troubleshooting, SAM CLI has a command called `sam logs`. `sam logs` lets you fetch logs generated by your deployed Lambda function from the command line. In addition to printing the logs on the terminal, this command has several nifty features to help you quickly find the bug.
-
-`NOTE`: This command works for all AWS Lambda functions; not just the ones you deploy using SAM.
-
-```bash
-elastic-beanstalk-example$ sam logs -n HelloWorldFunction --stack-name elastic-beanstalk-example --tail
-```
-
-You can find more information and examples about filtering Lambda function logs in the [SAM CLI Documentation](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/serverless-sam-cli-logging.html).
-
-## Unit tests
-
-Tests are defined in the `hello-world/tests` folder in this project. Use NPM to install the [Mocha test framework](https://mochajs.org/) and run unit tests from your local machine.
-
-```bash
-elastic-beanstalk-example$ cd hello-world
-hello-world$ npm install
-hello-world$ npm run test
-```
+### Security Features
+- S3 bucket with public access blocked
+- CloudFront Origin Access Control (OAC)
+- Security groups with least privilege access
+- Encrypted S3 storage (AES256)
+- TLS 1.2 minimum for CloudFront
 
 ## Disaster Recovery and DNS Failover
 
@@ -123,16 +107,68 @@ The failover configuration includes:
 - Automatic failover to secondary endpoints (us-west-1)
 - 30-second health check intervals with 3 failure threshold
 
+## Local Development
+
+### Build Application
+```bash
+sam build
+```
+
+### Local API Testing
+```bash
+sam local start-api
+curl http://localhost:3000/
+```
+
+### Validate Templates
+```bash
+sam validate
+```
+
+## Monitoring and Logging
+
+- **CloudWatch**: Automatic logging for all services
+- **Enhanced Health Reporting**: Enabled for Elastic Beanstalk
+- **CloudFront Logging**: Available for frontend performance monitoring
+- **API Gateway Logging**: HTTP API request/response logging
+
+## Outputs
+
+After deployment, the stack provides:
+- **VPC ID**: For additional resource deployment
+- **Elastic Beanstalk URL**: Direct application access
+- **API Gateway URL**: RESTful API endpoint
+- **Custom Domain URLs**: Production-ready endpoints
+- **CloudFront Distribution**: CDN details for frontend
+
 ## Cleanup
 
-To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
+To delete the application and all its resources:
 
 ```bash
 sam delete --stack-name elastic-beanstalk-example
 ```
 
+This will delete all nested stacks (VPC, Backend, Frontend) and their resources.
+
+## Cost Optimization
+
+- **NAT Gateways**: Consider single NAT for development
+- **CloudFront**: PriceClass_100 for cost optimization
+- **Elastic Beanstalk**: t2.micro instances for development
+- **RDS**: Multi-AZ disabled by default (can be enabled)
+
+## Security Best Practices
+
+- All S3 buckets have public access blocked
+- Security groups follow least privilege principle
+- IAM roles use AWS managed policies
+- SSL/TLS encryption enforced throughout
+- VPC provides network isolation
+
 ## Resources
 
-See the [AWS SAM developer guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html) for an introduction to SAM specification, the SAM CLI, and serverless application concepts.
-
-Next, you can use AWS Serverless Application Repository to deploy ready to use Apps that go beyond hello world samples and learn how authors developed their applications: [AWS Serverless Application Repository main page](https://aws.amazon.com/serverless/serverlessrepo/)
+- [AWS SAM Developer Guide](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/what-is-sam.html)
+- [Elastic Beanstalk Documentation](https://docs.aws.amazon.com/elasticbeanstalk/)
+- [CloudFront Documentation](https://docs.aws.amazon.com/cloudfront/)
+- [API Gateway Documentation](https://docs.aws.amazon.com/apigateway/)
