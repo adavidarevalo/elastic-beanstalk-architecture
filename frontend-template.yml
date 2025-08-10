@@ -75,8 +75,6 @@ Resources:
             ResponseCode: 200
             ResponsePagePath: /index.html
 
-
-
   # Route 53 Record for frontend subdomain
   FrontendDNSRecord:
     Type: AWS::Route53::RecordSet
