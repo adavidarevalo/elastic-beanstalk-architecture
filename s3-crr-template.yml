@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  S3 Cross-Region Replication Configuration
+
+Resources:
+  # IAM Role for S3 Cross-Region Replication
+  S3ReplicationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ReplicationPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObjectVersionForReplication
+                  - s3:GetObjectVersionAcl
+                  - s3:GetObjectVersionTagging
+                Resource: arn:aws:s3:::frontend.davidarevalo.info/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: arn:aws:s3:::frontend.davidarevalo.info
+              - Effect: Allow
+                Action:
+                  - s3:ReplicateObject
+                  - s3:ReplicateDelete
+                  - s3:ReplicateTags
+                Resource: arn:aws:s3:::frontend-dr.davidarevalo.info/*
+
+  # S3 Bucket Replication Configuration
+  S3ReplicationConfiguration:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: frontend.davidarevalo.info
+      ReplicationConfiguration:
+        Role: !GetAtt S3ReplicationRole.Arn
+        Rules:
+          - Id: ReplicateToWest
+            Status: Enabled
+            Prefix: ''
+            Destination:
+              Bucket: arn:aws:s3:::frontend-dr.davidarevalo.info
+              StorageClass: STANDARD_IA
+
+Outputs:
+  ReplicationRoleArn:
+    Description: S3 Replication Role ARN
+    Value: !GetAtt S3ReplicationRole.Arn

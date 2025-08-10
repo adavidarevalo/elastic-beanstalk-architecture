@@ -1,0 +1,77 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  elastic-beanstalk-example-dr
+
+  DR SAM Template for us-west-1
+
+Parameters:
+  DeployBackend:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Whether to deploy the backend stack
+  
+  DeployFrontend:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Whether to deploy the frontend stack
+
+Conditions:
+  ShouldDeployBackend: !Equals [!Ref DeployBackend, 'true']
+  ShouldDeployFrontend: !Equals [!Ref DeployFrontend, 'true']
+
+Resources:
+  # VPC Stack
+  VPCStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: vpc-stack.yml
+
+  # Backend Stack (conditional)
+  BackendStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployBackend
+    Properties:
+      TemplateURL: backend-template-dr.yml
+      Parameters:
+        VpcId: !GetAtt VPCStack.Outputs.VpcId
+        PublicSubnet1Id: !GetAtt VPCStack.Outputs.PublicSubnet1Id
+        PublicSubnet2Id: !GetAtt VPCStack.Outputs.PublicSubnet2Id
+        PrivateSubnet1Id: !GetAtt VPCStack.Outputs.PrivateSubnet1Id
+        PrivateSubnet2Id: !GetAtt VPCStack.Outputs.PrivateSubnet2Id
+        DatabaseSubnet1Id: !GetAtt VPCStack.Outputs.DatabaseSubnet1Id
+        DatabaseSubnet2Id: !GetAtt VPCStack.Outputs.DatabaseSubnet2Id
+
+  # Frontend Stack (conditional)
+  FrontendStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: ShouldDeployFrontend
+    Properties:
+      TemplateURL: frontend-template-dr.yml
+
+Outputs:
+  VPCStackId:
+    Description: VPC Stack ID
+    Value: !Ref VPCStack
+  
+  BackendStackId:
+    Condition: ShouldDeployBackend
+    Description: Backend Stack ID
+    Value: !Ref BackendStack
+  
+  ApplicationURL:
+    Condition: ShouldDeployBackend
+    Description: Elastic Beanstalk Application URL
+    Value: !GetAtt BackendStack.Outputs.ElasticBeanstalkURL
+  
+  FrontendStackId:
+    Condition: ShouldDeployFrontend
+    Description: Frontend Stack ID
+    Value: !Ref FrontendStack
+  
+  FrontendURL:
+    Condition: ShouldDeployFrontend
+    Description: Frontend URL
+    Value: !GetAtt FrontendStack.Outputs.FrontendURL

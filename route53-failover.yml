@@ -1,0 +1,106 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Route 53 DNS Failover Configuration
+
+Parameters:
+  SecondaryApiEndpoint:
+    Type: String
+    Description: Secondary API Gateway endpoint
+    
+  SecondaryFrontendEndpoint:
+    Type: String
+    Description: Secondary CloudFront distribution domain
+
+Resources:
+  # Health Check for Primary API
+  PrimaryApiHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      Type: HTTPS
+      ResourcePath: /
+      FullyQualifiedDomainName: api.davidarevalo.info
+      Port: 443
+      RequestInterval: 30
+      FailureThreshold: 3
+      Tags:
+        - Key: Name
+          Value: Primary-API-HealthCheck
+
+  # Health Check for Primary Frontend
+  PrimaryFrontendHealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      Type: HTTPS
+      ResourcePath: /
+      FullyQualifiedDomainName: frontend.davidarevalo.info
+      Port: 443
+      RequestInterval: 30
+      FailureThreshold: 3
+      Tags:
+        - Key: Name
+          Value: Primary-Frontend-HealthCheck
+
+  # Primary API Record (us-east-1)
+  PrimaryApiRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z0663610FALSUBU5IALA
+      Name: api.davidarevalo.info
+      Type: A
+      SetIdentifier: Primary-API
+      Failover: PRIMARY
+      HealthCheckId: !Ref PrimaryApiHealthCheck
+      AliasTarget:
+        DNSName: d-abc123.execute-api.us-east-1.amazonaws.com
+        HostedZoneId: Z1UJRXOUMOOFQ8
+        EvaluateTargetHealth: true
+
+  # Secondary API Record (us-west-1)
+  SecondaryApiRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z0663610FALSUBU5IALA
+      Name: api.davidarevalo.info
+      Type: CNAME
+      SetIdentifier: Secondary-API
+      Failover: SECONDARY
+      TTL: 60
+      ResourceRecords:
+        - !Ref SecondaryApiEndpoint
+
+  # Primary Frontend Record (us-east-1)
+  PrimaryFrontendRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z0663610FALSUBU5IALA
+      Name: frontend.davidarevalo.info
+      Type: A
+      SetIdentifier: Primary-Frontend
+      Failover: PRIMARY
+      HealthCheckId: !Ref PrimaryFrontendHealthCheck
+      AliasTarget:
+        DNSName: d1234567890.cloudfront.net
+        HostedZoneId: Z2FDTNDATAQYW2
+        EvaluateTargetHealth: true
+
+  # Secondary Frontend Record (us-west-1)
+  SecondaryFrontendRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: Z0663610FALSUBU5IALA
+      Name: frontend.davidarevalo.info
+      Type: CNAME
+      SetIdentifier: Secondary-Frontend
+      Failover: SECONDARY
+      TTL: 60
+      ResourceRecords:
+        - !Ref SecondaryFrontendEndpoint
+
+Outputs:
+  PrimaryApiHealthCheckId:
+    Description: Primary API Health Check ID
+    Value: !Ref PrimaryApiHealthCheck
+    
+  PrimaryFrontendHealthCheckId:
+    Description: Primary Frontend Health Check ID
+    Value: !Ref PrimaryFrontendHealthCheck
